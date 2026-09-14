@@ -33,14 +33,35 @@ att watch                     # move files dropped into inbox/, print links, cop
 att watch --notify            # same, plus a desktop notification per batch
 att drop                      # open inbox/ in Finder / file manager, then watch
 att list                      # newest first: date, size, name
-att find meeting              # case-insensitive substring search
+att find meeting              # case-insensitive search, fuzzy if nothing contains the query
+att pick                      # choose interactively (fzf), copy the link
+att pick --print notes        # print the chosen name instead, for scripts
 att open report-2             # open in default application
 att path report-2             # print absolute path
 att link report-2             # print the Markdown link again
 ```
 
-`ID` is a stored file name or any unique part of it; ambiguous IDs list the
-candidates. Images (png, jpg, gif, webp, svg) get `![…](…)` embed links.
+`ID` is a stored file name or any unique part of it. If no name contains it,
+its letters are matched in order, so `att open mtgnts2` opens
+`meeting notes-2.pdf`. Ambiguous IDs list the candidates. Images (png, jpg,
+gif, webp, svg) get `![…](…)` embed links.
+
+## Picking
+
+`att pick [QUERY]` opens [fzf](https://github.com/junegunn/fzf) over all
+attachments, newest first, with a preview: kind, size, image dimensions, PDF
+page count where `file` reports it, and text content (highlighted by `bat` if
+installed).
+
+| Key | Action |
+|---|---|
+| Enter | copy the Markdown link (and print it) |
+| Ctrl-Y | copy the full path |
+| Ctrl-O | open the file, keep picking |
+
+`--print` prints the chosen name without copying, e.g.
+`att open (att pick --print)`. Without fzf, `att pick` shows a numbered list
+of matches instead.
 
 `att watch` waits until a file's size and mtime stop changing before ingesting
 it, and ignores dotfiles, directories and partial downloads (`.crdownload`,

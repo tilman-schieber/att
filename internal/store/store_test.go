@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -114,6 +115,7 @@ func TestResolve(t *testing.T) {
 		"report.pdf": "report.pdf",
 		"data.csv":   "Data.csv",
 		"-2":         "report-2.pdf",
+		"rpt2":       "report-2.pdf", // fuzzy fallback
 	} {
 		e, err := s.Resolve(id)
 		if err != nil {
@@ -128,6 +130,38 @@ func TestResolve(t *testing.T) {
 	}
 	if _, err := s.Resolve("nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Resolve(nope): want ErrNotFound, got %v", err)
+	}
+}
+
+func names(entries []Entry) []string {
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name)
+	}
+	return out
+}
+
+func TestMatchFallsBackToFuzzy(t *testing.T) {
+	entries := []Entry{{Name: "meeting notes.pdf"}, {Name: "meeting notes-2.pdf"}, {Name: "data.csv"}}
+	tests := map[string][]string{
+		"notes-2": {"meeting notes-2.pdf"},
+		"NOTES":   {"meeting notes.pdf", "meeting notes-2.pdf"},
+		"mtgnts2": {"meeting notes-2.pdf"},
+		"d csv":   {"data.csv"},
+		"xyz":     nil,
+	}
+	for q, want := range tests {
+		if got := names(Match(entries, q)); !reflect.DeepEqual(got, want) {
+			t.Errorf("Match(%q) = %q, want %q", q, got, want)
+		}
+	}
+}
+
+func TestMatchRanksWordStartsFirst(t *testing.T) {
+	entries := []Entry{{Name: "meeting notes.pdf"}, {Name: "my_notes.txt"}}
+	want := []string{"my_notes.txt", "meeting notes.pdf"}
+	if got := names(Match(entries, "mn")); !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(mn) = %q, want %q", got, want)
 	}
 }
 

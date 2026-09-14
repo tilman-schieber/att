@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tilman-schieber/att/internal/store"
+	"github.com/tilman-schieber/att/internal/ui"
 )
 
 // logTimestamps prefixes status lines with the time; set by a watcher whose
@@ -38,6 +39,15 @@ func usageErr(msg string) int {
 	return 2
 }
 
+func printAmbiguous(amb *store.AmbiguousError) int {
+	fail(amb)
+	for _, m := range amb.Matches {
+		stderr.Printf("  %s %s\n", stderr.Dim("·"), m.Name)
+	}
+	stderr.Printf("%s\n", stderr.Dim("use more of the name, or choose with: att pick "+amb.ID))
+	return 1
+}
+
 // renamedNote explains a suffixed name, e.g. " (report.pdf was taken)".
 func renamedNote(src string, e store.Entry) string {
 	orig := filepath.Base(src)
@@ -61,13 +71,14 @@ func printEntries(entries []store.Entry, query string) {
 		stdout.Printf("%s  %s  %s\n",
 			stdout.Dim(fmt.Sprintf("%-11s", friendlyTime(e.ModTime, now))),
 			fmt.Sprintf("%8s", humanSize(e.Size)),
-			styleName(e.Name, query))
+			styleName(stdout, e.Name, query))
 	}
 	stdout.Printf("%s\n", stdout.Dim(fmt.Sprintf("%d %s · %s", len(entries), plural(len(entries), "attachment"), humanSize(total))))
 }
 
-// styleName colors a name by file type, or highlights the query match.
-func styleName(name, query string) string {
+// styleName colors a name by file type, or highlights a substring match of
+// query. Fuzzy matches are shown unstyled.
+func styleName(p *ui.Printer, name, query string) string {
 	if query != "" {
 		lowerName, lowerQuery := strings.ToLower(name), strings.ToLower(query)
 		i := strings.Index(lowerName, lowerQuery)
@@ -75,19 +86,19 @@ func styleName(name, query string) string {
 			return name
 		}
 		j := i + len(lowerQuery)
-		return name[:i] + stdout.Highlight(name[i:j]) + name[j:]
+		return name[:i] + p.Highlight(name[i:j]) + name[j:]
 	}
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".heic":
-		return stdout.Magenta(name)
+		return p.Magenta(name)
 	case ".pdf":
-		return stdout.Red(name)
+		return p.Red(name)
 	case ".zip", ".gz", ".tgz", ".xz", ".bz2", ".zst", ".7z", ".rar":
-		return stdout.Yellow(name)
+		return p.Yellow(name)
 	case ".mp4", ".mov", ".mkv", ".webm", ".mp3", ".m4a", ".wav", ".flac":
-		return stdout.Blue(name)
+		return p.Blue(name)
 	case ".md", ".txt", ".csv", ".json", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt":
-		return stdout.Cyan(name)
+		return p.Cyan(name)
 	}
 	return name
 }

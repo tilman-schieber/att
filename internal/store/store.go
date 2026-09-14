@@ -212,13 +212,68 @@ func (s *Store) List() ([]Entry, error) {
 	return entries, nil
 }
 
-// Find returns attachments whose name contains query (case-insensitive).
+// Find returns attachments matching query, see Match.
 func (s *Store) Find(query string) ([]Entry, error) {
 	entries, err := s.List()
 	if err != nil {
 		return nil, err
 	}
-	return filterName(entries, query), nil
+	return Match(entries, query), nil
+}
+
+// Match returns entries whose name contains query (case-insensitive). If
+// none do, it falls back to fuzzy matching — the query's characters occur in
+// the name in order — with the best matches first.
+func Match(entries []Entry, query string) []Entry {
+	if m := filterName(entries, query); len(m) > 0 {
+		return m
+	}
+	type scored struct {
+		e     Entry
+		score int
+	}
+	var fuzzy []scored
+	for _, e := range entries {
+		if score, ok := fuzzyScore(e.Name, query); ok {
+			fuzzy = append(fuzzy, scored{e, score})
+		}
+	}
+	sort.SliceStable(fuzzy, func(i, j int) bool { return fuzzy[i].score > fuzzy[j].score })
+	var out []Entry
+	for _, f := range fuzzy {
+		out = append(out, f.e)
+	}
+	return out
+}
+
+// fuzzyScore reports whether the non-space characters of query occur in name
+// in order (case-insensitive). Consecutive characters and characters at word
+// starts score higher.
+func fuzzyScore(name, query string) (int, bool) {
+	q := []rune(strings.ToLower(strings.Join(strings.Fields(query), "")))
+	n := []rune(strings.ToLower(name))
+	if len(q) == 0 {
+		return 0, false
+	}
+	score, qi, prev := 0, 0, -2
+	for i, r := range n {
+		if qi == len(q) {
+			break
+		}
+		if r != q[qi] {
+			continue
+		}
+		score++
+		if i == prev+1 {
+			score += 2
+		}
+		if i == 0 || strings.ContainsRune(" -_.()[]", n[i-1]) {
+			score += 3
+		}
+		prev = i
+		qi++
+	}
+	return score, qi == len(q)
 }
 
 func filterName(entries []Entry, query string) []Entry {
@@ -232,8 +287,8 @@ func filterName(entries []Entry, query string) []Entry {
 	return out
 }
 
-// Resolve finds one attachment by exact name, case-insensitive name, or
-// unique case-insensitive substring, in that order.
+// Resolve finds one attachment by exact name, case-insensitive name, or a
+// unique Match (substring, then fuzzy), in that order.
 func (s *Store) Resolve(id string) (Entry, error) {
 	entries, err := s.List()
 	if err != nil {
@@ -253,7 +308,7 @@ func (s *Store) Resolve(id string) (Entry, error) {
 	if len(folded) == 1 {
 		return folded[0], nil
 	}
-	matches := filterName(entries, id)
+	matches := Match(entries, id)
 	switch len(matches) {
 	case 0:
 		return Entry{}, fmt.Errorf("%w: %q", ErrNotFound, id)

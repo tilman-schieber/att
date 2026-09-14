@@ -26,7 +26,8 @@ var helpRows = []helpRow{
 	{"watch", "[--notify]", "move files dropped into the inbox into the store"},
 	{"drop", "", "open the inbox in the file manager, then watch it"},
 	{"list", "", "list attachments, newest first"},
-	{"find", "QUERY", "list attachments whose name contains QUERY"},
+	{"find", "QUERY", "list attachments whose name matches QUERY"},
+	{"pick", "[--print] [QUERY]", "choose an attachment interactively, copy its link"},
 	{"open", "ID", "open an attachment in its default application"},
 	{"path", "ID", "print the full path of an attachment"},
 	{"link", "ID", "print the Markdown link of an attachment"},
@@ -38,16 +39,22 @@ var helpRows = []helpRow{
 func printUsage(p *ui.Printer) {
 	p.Printf("%s %s\n\n", p.Bold("att"), p.Dim("— note attachments as Markdown file:// links"))
 	p.Printf("%s\n", p.Bold("Usage"))
+	width := 0
+	for _, r := range helpRows {
+		width = max(width, len(r.cmd)+1+len(r.args))
+	}
 	for _, r := range helpRows {
 		raw, styled := r.cmd, p.Cyan(r.cmd)
 		if r.args != "" {
 			raw += " " + r.args
 			styled += " " + p.Yellow(r.args)
 		}
-		p.Printf("  %s %s%s  %s\n", p.Dim("att"), styled, strings.Repeat(" ", 18-len(raw)), r.desc)
+		p.Printf("  %s %s%s  %s\n", p.Dim("att"), styled, strings.Repeat(" ", width-len(raw)), r.desc)
 	}
 	p.Printf("\n%s\n", p.Bold("Notes"))
-	p.Printf("  %s is a stored file name or any unique part of it.\n", p.Yellow("ID"))
+	p.Printf("  %s and %s match any part of a stored file name. If no name contains\n", p.Yellow("ID"), p.Yellow("QUERY"))
+	p.Printf("  them, their letters are matched in order: %s finds %s.\n", p.Yellow("mtgnts2"), p.Cyan("meeting notes-2.pdf"))
+	p.Printf("  %s uses fzf if installed, else a numbered list.\n", p.Cyan("pick"))
 	p.Printf("  Files live in %s; set %s to change that, %s to disable colors.\n",
 		p.Cyan("~/.att"), p.Cyan("ATT_DIR"), p.Cyan("NO_COLOR"))
 }
@@ -128,6 +135,10 @@ func run(args []string) int {
 		}
 		printEntries(entries, query)
 		return 0
+	case "pick":
+		return pickCmd(s, args)
+	case "preview":
+		return previewCmd(s, args)
 	case "open", "path", "link":
 		if len(args) != 1 {
 			return usageErr(cmd + " needs exactly one ID")
@@ -160,12 +171,7 @@ func resolveCmd(s *store.Store, cmd, id string) int {
 	e, err := s.Resolve(id)
 	var amb *store.AmbiguousError
 	if errors.As(err, &amb) {
-		fail(err)
-		for _, m := range amb.Matches {
-			stderr.Printf("  %s %s\n", stderr.Dim("·"), m.Name)
-		}
-		stderr.Printf("%s\n", stderr.Dim("use more of the name to pick one"))
-		return 1
+		return printAmbiguous(amb)
 	}
 	if err != nil {
 		return fail(err)

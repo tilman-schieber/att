@@ -37,6 +37,12 @@ func colorWanted(tty bool) bool {
 	return tty
 }
 
+// Colored returns a Printer for styling text that another program renders,
+// such as fzf. It styles unless NO_COLOR is set; its Printf discards output.
+func Colored() *Printer {
+	return NewWriter(io.Discard, false, os.Getenv("NO_COLOR") == "")
+}
+
 // IsTerminal reports whether f is a character device such as a terminal.
 func IsTerminal(f *os.File) bool {
 	info, err := f.Stat()
